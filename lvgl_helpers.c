@@ -16,6 +16,7 @@
 #include "lvgl_spi_conf.h"
 
 #include "lvgl_i2c/i2c_manager.h"
+#include "esp_idf_version.h"
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE
 #include "lvgl.h"
@@ -23,6 +24,9 @@
 #include "lvgl/lvgl.h"
 #endif
 
+#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5,0,0)
+#define SPI_HOST_MAX SOC_SPI_PERIPH_NUM
+#endif
 /*********************
  *      DEFINES
  *********************/
@@ -79,6 +83,8 @@ void lvgl_driver_init(void)
 #endif
 
 #if defined (SHARED_SPI_BUS)
+#ifndef CONFIG_USE_7_INCHER
+#ifndef CONFIG_USE_BIT_BANG_TOUCH
     ESP_LOGI(TAG, "Initializing shared SPI master");
 
     lvgl_spi_driver_init(TFT_SPI_HOST,
@@ -91,14 +97,15 @@ void lvgl_driver_init(void)
 
     disp_driver_init();
     touch_driver_init();
-
     return;
+#endif
+#endif
 #endif
 
 /* Display controller initialization */
 #if defined CONFIG_LV_TFT_DISPLAY_PROTOCOL_SPI
     ESP_LOGI(TAG, "Initializing SPI master for display");
-
+#ifndef CONFIG_USE_7_INCHER
     lvgl_spi_driver_init(TFT_SPI_HOST,
         DISP_SPI_MISO, DISP_SPI_MOSI, DISP_SPI_CLK,
         SPI_BUS_MAX_TRANSFER_SZ, 1,
@@ -107,6 +114,7 @@ void lvgl_driver_init(void)
     disp_spi_add_device(TFT_SPI_HOST);
 
     disp_driver_init();
+#endif
 #elif defined (CONFIG_LV_I2C_DISPLAY)
     disp_driver_init();
 #else
@@ -118,12 +126,16 @@ void lvgl_driver_init(void)
     #if defined (CONFIG_LV_TOUCH_DRIVER_PROTOCOL_SPI)
         ESP_LOGI(TAG, "Initializing SPI master for touch");
 
-        lvgl_spi_driver_init(TOUCH_SPI_HOST,
-            TP_SPI_MISO, TP_SPI_MOSI, TP_SPI_CLK,
-            0 /* Defaults to 4094 */, 2,
-            -1, -1);
+#ifndef CONFIG_USE_BIT_BANG_TOUCH
 
-        tp_spi_add_device(TOUCH_SPI_HOST);
+    lvgl_spi_driver_init(TOUCH_SPI_HOST,
+        TP_SPI_MISO, TP_SPI_MOSI, TP_SPI_CLK,
+        0 /* Defaults to 4094 */, 2,
+        -1, -1);
+
+    tp_spi_add_device(TOUCH_SPI_HOST);
+
+#endif
 
         touch_driver_init();
     #elif defined (CONFIG_LV_I2C_TOUCH)
@@ -175,11 +187,15 @@ bool lvgl_spi_driver_init(int host,
     };
 
     ESP_LOGI(TAG, "Initializing SPI bus...");
-    #if defined (CONFIG_IDF_TARGET_ESP32C3)
+    #if defined (CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C5)
     dma_channel = SPI_DMA_CH_AUTO;
     #endif
+#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(4,3,0)
+    esp_err_t ret = spi_bus_initialize(host, &buscfg, dma_channel);
+#else
     esp_err_t ret = spi_bus_initialize(host, &buscfg, (spi_dma_chan_t)dma_channel);
-    assert(ret == ESP_OK);
+#endif
+    //assert(ret == ESP_OK);
 
     return ESP_OK != ret;
 }

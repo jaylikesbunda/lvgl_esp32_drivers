@@ -12,6 +12,10 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_idf_version.h"
+#if ESP_IDF_VERSION <= ESP_IDF_VERSION_VAL(5,0,0)
+#include "rom/gpio.h"
+#endif
 
 /*********************
  *      DEFINES
@@ -52,6 +56,35 @@ static void ili9341_send_color(void * data, uint16_t length);
 
 void ili9341_init(void)
 {
+#ifdef CONFIG_USE_ILI9341_2
+
+	lcd_init_cmd_t ili_init_cmds[] = {
+		{0xCF, {0x00, 0xC1, 0x30}, 3},
+		{0xED, {0x64, 0x03, 0x12, 0x81}, 4},
+		{0xE8, {0x85, 0x00, 0x78}, 3},
+		{0xCB, {0x39, 0x2C, 0x00, 0x34, 0x02}, 5},
+		{0xF7, {0x20}, 1},
+		{0xEA, {0x00, 0x00}, 2},
+		{0xC0, {0x10}, 1},          /* Power control */
+		{0xC1, {0x00}, 1},          /* Power control */
+		{0xC5, {0x30, 0x30}, 2},    /* VCOM control */
+		{0xC7, {0xB7}, 1},          /* VCOM control2 */
+		{0x3A, {0x55}, 1},          /* Pixel Format Set */
+		{0x36, {0x08}, 1},          /* Memory Access Control */
+		{0xB1, {0x00, 0x1A}, 2},    /* Frame Rate Control */
+		{0xB6, {0x08, 0x82, 0x27}, 3}, /* Display Function Control */
+		{0xF2, {0x00}, 1},          /* 3Gamma Function Disable */
+		{0x26, {0x01}, 1},          /* Gamma curve selected */
+		{0xE0, {0x0F, 0x2A, 0x28, 0x08, 0x0E, 0x08, 0x54, 0xA9, 0x43, 0x0A, 0x0F, 0x00, 0x00, 0x00, 0x00}, 15}, /* Set Gamma */
+		{0xE1, {0x00, 0x15, 0x17, 0x07, 0x11, 0x06, 0x2B, 0x56, 0x3C, 0x05, 0x10, 0x0F, 0x3F, 0x3F, 0x0F}, 15}, /* Set Gamma */
+		{0x2B, {0x00, 0x00, 0x01, 0x3F}, 4}, /* Set Column Address */
+		{0x2A, {0x00, 0x00, 0x00, 0xEF}, 4}, /* Set Page Address */
+		{0x11, {0}, 0x80},          /* Exit Sleep */
+		{0x29, {0}, 0x80},          /* Display on */
+		{0, {0}, 0xFF}              /* End of commands */
+	};
+#else
+
 	lcd_init_cmd_t ili_init_cmds[]={
 		{0xCF, {0x00, 0x83, 0X30}, 3},
 		{0xED, {0x64, 0x03, 0X12, 0X81}, 4},
@@ -80,19 +113,29 @@ void ili9341_init(void)
 		{0, {0}, 0xff},
 	};
 
+#endif
+
 	//Initialize non-SPI GPIOs
+#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5,0,0)
     gpio_pad_select_gpio(ILI9341_DC);
+#else
+    esp_rom_gpio_pad_select_gpio(ILI9341_DC);
+#endif
 	gpio_set_direction(ILI9341_DC, GPIO_MODE_OUTPUT);
 
 #if ILI9341_USE_RST
+#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5,0,0)
     gpio_pad_select_gpio(ILI9341_RST);
+#else
+    esp_rom_gpio_pad_select_gpio(ILI9341_RST);
+#endif
 	gpio_set_direction(ILI9341_RST, GPIO_MODE_OUTPUT);
 
 	//Reset the display
 	gpio_set_level(ILI9341_RST, 0);
-	vTaskDelay(100 / portTICK_RATE_MS);
+	vTaskDelay(100 / portTICK_PERIOD_MS);
 	gpio_set_level(ILI9341_RST, 1);
-	vTaskDelay(100 / portTICK_RATE_MS);
+	vTaskDelay(100 / portTICK_PERIOD_MS);
 #endif
 
 	ESP_LOGI(TAG, "Initialization.");
@@ -103,7 +146,7 @@ void ili9341_init(void)
 		ili9341_send_cmd(ili_init_cmds[cmd].cmd);
 		ili9341_send_data(ili_init_cmds[cmd].data, ili_init_cmds[cmd].databytes&0x1F);
 		if (ili_init_cmds[cmd].databytes & 0x80) {
-			vTaskDelay(100 / portTICK_RATE_MS);
+			vTaskDelay(100 / portTICK_PERIOD_MS);
 		}
 		cmd++;
 	}
